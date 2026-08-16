@@ -166,13 +166,14 @@ st.caption(
 # CRÉATION DES ONGLETS
 # ============================================================
 
-tab_general, tab_qualite, tab_univariee, tab_bivariee, tab_correlations, tab_avancee = st.tabs([
+tab_general, tab_qualite, tab_univariee, tab_bivariee, tab_correlations, tab_avancee, tab_nettoyage = st.tabs([
     "📋 Vue générale",
     "🧹 Qualité des données",
     "📊 Analyse univariée",
     "🔗 Analyse bivariée",
     "🔥 Corrélations",
-    "🧠 Analyse avancée"
+    "🧠 Analyse avancée",
+    "🛠️ Nettoyage & Export"
 ])
 
 
@@ -2247,3 +2248,455 @@ with tab_avancee:
                     df_anomalies.head(100),
                     use_container_width=True
                 )
+
+# ============================================================
+# ONGLET 7 : NETTOYAGE ET EXPORT
+# ============================================================
+
+with tab_nettoyage:
+
+    st.header("🛠️ Nettoyage et export")
+
+    st.write(
+        """
+        Cette partie permet d'appliquer quelques opérations
+        de nettoyage simples au jeu de données.
+
+        Les modifications sont appliquées sur une **copie**
+        du DataFrame original afin de ne jamais modifier
+        directement les données chargées.
+        """
+    )
+
+    # --------------------------------------------------------
+    # COPIE DU DATAFRAME
+    # --------------------------------------------------------
+
+    df_nettoye = df.copy()
+
+    st.info(
+        f"""
+        Jeu de données initial :
+        **{df.shape[0]} lignes** et **{df.shape[1]} colonnes**.
+        """
+    )
+
+    st.divider()
+
+    # ========================================================
+    # 1. SUPPRESSION DES DOUBLONS
+    # ========================================================
+
+    st.subheader("1️⃣ Doublons")
+
+    nb_doublons_nettoyage = df_nettoye.duplicated().sum()
+
+    st.write(
+        f"""
+        Nombre de doublons complets détectés :
+        **{nb_doublons_nettoyage}**
+        """
+    )
+
+    supprimer_doublons = st.checkbox(
+        "Supprimer les lignes dupliquées",
+        value=False,
+        key="supprimer_doublons"
+    )
+
+    if supprimer_doublons:
+
+        df_nettoye = (
+            df_nettoye
+            .drop_duplicates()
+            .copy()
+        )
+
+        st.success(
+            f"""
+            Doublons supprimés.
+
+            Le jeu de données contient maintenant
+            **{len(df_nettoye)} lignes**.
+            """
+        )
+
+    st.divider()
+
+    # ========================================================
+    # 2. SUPPRESSION DE COLONNES
+    # ========================================================
+
+    st.subheader("2️⃣ Suppression de colonnes")
+
+    st.write(
+        """
+        Certaines colonnes peuvent être inutiles pour l'analyse,
+        par exemple :
+
+        - identifiants techniques ;
+        - variables constantes ;
+        - colonnes presque entièrement vides ;
+        - champs non pertinents pour l'objectif étudié.
+        """
+    )
+
+    colonnes_a_supprimer = st.multiselect(
+        "Colonnes à supprimer",
+        options=df_nettoye.columns.tolist(),
+        key="colonnes_a_supprimer"
+    )
+
+    if colonnes_a_supprimer:
+
+        df_nettoye = (
+            df_nettoye
+            .drop(
+                columns=colonnes_a_supprimer
+            )
+            .copy()
+        )
+
+        st.success(
+            f"""
+            {len(colonnes_a_supprimer)}
+            colonne(s) supprimée(s).
+            """
+        )
+
+    st.divider()
+
+    # ========================================================
+    # 3. VALEURS MANQUANTES
+    # ========================================================
+
+    st.subheader("3️⃣ Gestion des valeurs manquantes")
+
+    nb_manquants_nettoyage = (
+        df_nettoye
+        .isna()
+        .sum()
+        .sum()
+    )
+
+    st.write(
+        f"""
+        Le jeu de données contient actuellement
+        **{nb_manquants_nettoyage} valeurs manquantes**.
+        """
+    )
+
+    strategie_manquants = st.selectbox(
+        "Choisissez une stratégie",
+        options=[
+            "Ne rien modifier",
+            "Supprimer les lignes avec des valeurs manquantes",
+            "Supprimer les colonnes trop incomplètes",
+            "Imputer les variables numériques",
+            "Imputer les variables catégorielles",
+            "Imputer toutes les variables"
+        ],
+        key="strategie_manquants"
+    )
+
+    # --------------------------------------------------------
+    # STRATÉGIE 1 : SUPPRESSION DES LIGNES
+    # --------------------------------------------------------
+
+    if strategie_manquants == "Supprimer les lignes avec des valeurs manquantes":
+
+        avant = len(df_nettoye)
+
+        df_nettoye = (
+            df_nettoye
+            .dropna()
+            .copy()
+        )
+
+        apres = len(df_nettoye)
+
+        st.warning(
+            f"""
+            {avant - apres} ligne(s) supprimée(s).
+
+            Il reste **{apres} lignes**.
+            """
+        )
+
+    elif strategie_manquants == "Supprimer les colonnes trop incomplètes":
+
+        seuil_suppression = st.slider(
+            "Supprimer les colonnes ayant au moins ce pourcentage de valeurs manquantes",
+            min_value=10,
+            max_value=100,
+            value=70,
+            step=5,
+            key="seuil_suppression_colonnes"
+        )
+
+        taux_manquants_colonnes = (
+            df_nettoye
+            .isna()
+            .mean()
+            * 100
+        )
+
+        colonnes_trop_vides = (
+            taux_manquants_colonnes[
+                taux_manquants_colonnes >= seuil_suppression
+            ]
+            .index
+            .tolist()
+        )
+
+        if colonnes_trop_vides:
+
+            st.write(
+                "Colonnes concernées :"
+            )
+
+            st.write(
+                colonnes_trop_vides
+            )
+
+            df_nettoye = (
+                df_nettoye
+                .drop(
+                    columns=colonnes_trop_vides
+                )
+                .copy()
+            )
+
+            st.success(
+                f"""
+                {len(colonnes_trop_vides)}
+                colonne(s) supprimée(s).
+                """
+            )
+
+        else:
+
+            st.info(
+                """
+                Aucune colonne ne dépasse
+                le seuil sélectionné.
+                """
+            )
+
+    elif strategie_manquants == "Imputer les variables numériques":
+
+        st.info(
+            """
+            💡 **Imputer** signifie remplacer une valeur manquante
+            par une valeur calculée.
+
+            Ici, les variables numériques sont complétées
+            avec leur **médiane**.
+
+            La médiane est souvent préférée à la moyenne
+            lorsqu'il existe des valeurs extrêmes.
+            """
+        )
+
+        colonnes_num = [
+            col
+            for col in df_nettoye.columns
+            if (
+                pd.api.types.is_numeric_dtype(df_nettoye[col])
+                and not pd.api.types.is_bool_dtype(df_nettoye[col])
+            )
+        ]
+
+        for col in colonnes_num:
+
+            mediane = (
+                df_nettoye[col]
+                .median()
+            )
+
+            df_nettoye[col] = (
+                df_nettoye[col]
+                .fillna(mediane)
+            )
+
+        st.success(
+            f"""
+            Imputation réalisée sur
+            **{len(colonnes_num)} variable(s) numérique(s)**.
+            """
+        )
+
+    elif strategie_manquants == "Imputer les variables catégorielles":
+
+        st.info(
+            """
+            Les valeurs manquantes des variables catégorielles
+            sont remplacées par la modalité la plus fréquente,
+            appelée **mode**.
+            """
+        )
+
+        colonnes_cat = [
+            col
+            for col in df_nettoye.columns
+            if not pd.api.types.is_numeric_dtype(df_nettoye[col])
+            or pd.api.types.is_bool_dtype(df_nettoye[col])
+        ]
+
+        for col in colonnes_cat:
+
+            mode = (
+                df_nettoye[col]
+                .mode(dropna=True)
+            )
+
+            if not mode.empty:
+
+                df_nettoye[col] = (
+                    df_nettoye[col]
+                    .fillna(mode.iloc[0])
+                )
+
+        st.success(
+            f"""
+            Imputation réalisée sur
+            **{len(colonnes_cat)} variable(s) catégorielle(s)**.
+            """
+        )
+
+    elif strategie_manquants == "Imputer toutes les variables":
+
+        colonnes_num = [
+            col
+            for col in df_nettoye.columns
+            if (
+                pd.api.types.is_numeric_dtype(df_nettoye[col])
+                and not pd.api.types.is_bool_dtype(df_nettoye[col])
+            )
+        ]
+
+        colonnes_cat = [
+            col
+            for col in df_nettoye.columns
+            if col not in colonnes_num
+        ]
+
+        # Variables numériques → médiane
+        for col in colonnes_num:
+
+            mediane = (
+                df_nettoye[col]
+                .median()
+            )
+
+            df_nettoye[col] = (
+                df_nettoye[col]
+                .fillna(mediane)
+            )
+
+        # Variables catégorielles → mode
+        for col in colonnes_cat:
+
+            mode = (
+                df_nettoye[col]
+                .mode(dropna=True)
+            )
+
+            if not mode.empty:
+
+                df_nettoye[col] = (
+                    df_nettoye[col]
+                    .fillna(mode.iloc[0])
+                )
+
+        st.success(
+            """
+            Toutes les valeurs manquantes pouvant être imputées
+            ont été traitées.
+            """
+        )
+
+    st.divider()
+
+    # ========================================================
+    # 4. RÉSUMÉ DU NETTOYAGE
+    # ========================================================
+
+    st.subheader("4️⃣ Résumé du nettoyage")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+
+        st.metric(
+            "Lignes",
+            df_nettoye.shape[0],
+            delta=df_nettoye.shape[0] - df.shape[0]
+        )
+
+    with col2:
+
+        st.metric(
+            "Colonnes",
+            df_nettoye.shape[1],
+            delta=df_nettoye.shape[1] - df.shape[1]
+        )
+
+    with col3:
+
+        valeurs_manquantes_restantes = (
+            df_nettoye
+            .isna()
+            .sum()
+            .sum()
+        )
+
+        st.metric(
+            "Valeurs manquantes",
+            valeurs_manquantes_restantes
+        )
+
+    with col4:
+
+        doublons_restants = (
+            df_nettoye
+            .duplicated()
+            .sum()
+        )
+
+        st.metric(
+            "Doublons",
+            doublons_restants
+        )
+
+    st.subheader("🔎 Aperçu du jeu de données nettoyé")
+
+    st.dataframe(
+        df_nettoye.head(50),
+        use_container_width=True
+    )
+
+    st.divider()
+
+    # ========================================================
+    # 5. EXPORT
+    # ========================================================
+
+    st.subheader("5️⃣ Export du fichier nettoyé")
+
+    csv_nettoye = (
+        df_nettoye
+        .to_csv(
+            index=False,
+            sep=";",
+            encoding="utf-8-sig"
+        )
+        .encode("utf-8-sig")
+    )
+
+    st.download_button(
+        label="⬇️ Télécharger le CSV nettoyé",
+        data=csv_nettoye,
+        file_name="dataset_nettoye.csv",
+        mime="text/csv"
+    )
