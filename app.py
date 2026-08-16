@@ -160,11 +160,12 @@ st.caption(
 # CRÉATION DES ONGLETS
 # ============================================================
 
-tab_general, tab_qualite, tab_univariee, tab_bivariee = st.tabs([
+tab_general, tab_qualite, tab_univariee, tab_bivariee, tab_correlations = st.tabs([
     "📋 Vue générale",
     "🧹 Qualité des données",
     "📊 Analyse univariée",
-    "🔗 Analyse bivariée"
+    "🔗 Analyse bivariée",
+    "🔥 Corrélations"
 ])
 
 
@@ -1409,4 +1410,359 @@ with tab_bivariee:
                     Les pourcentages facilitent la comparaison lorsque
                     les groupes n'ont pas les mêmes effectifs.
                     """
+                )
+
+# ============================================================
+# ONGLET 5 : ANALYSE DES CORRÉLATIONS
+# ============================================================
+
+with tab_correlations:
+
+    st.header("🔥 Analyse des corrélations")
+
+    st.write(
+        """
+        Une corrélation mesure la manière dont deux variables
+        numériques évoluent ensemble.
+
+        Le coefficient varie entre **-1 et +1** :
+
+        - proche de **+1** → forte relation positive ;
+        - proche de **0** → faible relation ;
+        - proche de **-1** → forte relation négative.
+
+        ⚠️ Une corrélation ne signifie pas nécessairement
+        qu'une variable est la cause de l'autre.
+        """
+    )
+
+    # --------------------------------------------------------
+    # SÉLECTION DES VARIABLES NUMÉRIQUES
+    # --------------------------------------------------------
+
+    colonnes_num_corr = [
+        col for col in df.columns
+        if (
+            pd.api.types.is_numeric_dtype(df[col])
+            and not pd.api.types.is_bool_dtype(df[col])
+        )
+    ]
+
+    if len(colonnes_num_corr) < 2:
+
+        st.warning(
+            """
+            Au moins deux variables numériques sont nécessaires
+            pour calculer une matrice de corrélation.
+            """
+        )
+
+    else:
+
+        st.write(
+            f"""
+            **{len(colonnes_num_corr)} variables numériques**
+            peuvent être utilisées pour cette analyse.
+            """
+        )
+
+        # ----------------------------------------------------
+        # CHOIX DE LA MÉTHODE
+        # ----------------------------------------------------
+
+        methode = st.radio(
+            "Méthode de corrélation",
+            options=["Pearson", "Spearman"],
+            horizontal=True,
+            key="methode_correlation"
+        )
+
+        if methode == "Pearson":
+            methode_pandas = "pearson"
+
+            st.info(
+                """
+                **Pearson** mesure principalement les relations
+                **linéaires** entre deux variables numériques.
+
+                C'est généralement la méthode la plus connue.
+                """
+            )
+
+        else:
+            methode_pandas = "spearman"
+
+            st.info(
+                """
+                **Spearman** repose sur le classement des valeurs.
+
+                Elle permet de détecter des relations monotones
+                qui ne sont pas nécessairement parfaitement linéaires.
+                """
+            )
+
+        # ----------------------------------------------------
+        # CHOIX DES COLONNES
+        # ----------------------------------------------------
+
+        variables_selectionnees = st.multiselect(
+            "Variables à inclure dans la matrice",
+            options=colonnes_num_corr,
+            default=colonnes_num_corr[:min(10, len(colonnes_num_corr))],
+            key="variables_correlation"
+        )
+
+        if len(variables_selectionnees) < 2:
+
+            st.warning(
+                "Sélectionnez au moins deux variables."
+            )
+
+        else:
+
+            # =================================================
+            # CALCUL DE LA MATRICE
+            # =================================================
+
+            matrice_corr = (
+                df[variables_selectionnees]
+                .corr(method=methode_pandas)
+            )
+
+            # =================================================
+            # HEATMAP
+            # =================================================
+
+            st.subheader("🌡️ Matrice de corrélation")
+
+            fig_corr = px.imshow(
+                matrice_corr,
+                text_auto=".2f",
+                aspect="auto",
+                color_continuous_scale="RdBu_r",
+                zmin=-1,
+                zmax=1,
+                title=(
+                    f"Matrice de corrélation "
+                    f"— méthode {methode}"
+                )
+            )
+
+            fig_corr.update_layout(
+                xaxis_title="Variables",
+                yaxis_title="Variables"
+            )
+
+            st.plotly_chart(
+                fig_corr,
+                use_container_width=True
+            )
+
+            st.info(
+                """
+                💡 **Comment lire cette matrice ?**
+
+                Chaque case représente la corrélation entre
+                deux variables.
+
+                La diagonale vaut toujours **1**, puisqu'une
+                variable est parfaitement corrélée avec elle-même.
+
+                Il faut donc surtout observer les cases situées
+                en dehors de cette diagonale.
+                """
+            )
+
+            # =================================================
+            # TRANSFORMATION DE LA MATRICE EN LISTE
+            # =================================================
+
+            correlations = (
+                matrice_corr
+                .stack()
+                .reset_index()
+            )
+
+            correlations.columns = [
+                "Variable 1",
+                "Variable 2",
+                "Corrélation"
+            ]
+
+            # Suppression des relations d'une variable avec elle-même
+            correlations = correlations[
+                correlations["Variable 1"]
+                != correlations["Variable 2"]
+            ].copy()
+
+            # -------------------------------------------------
+            # ÉVITER LES DOUBLONS
+            # -------------------------------------------------
+            #
+            # La matrice contient :
+            #
+            # Age / Salaire
+            # et
+            # Salaire / Age
+            #
+            # Il s'agit de la même relation.
+            # Nous n'en conservons donc qu'une seule.
+
+            correlations["paire"] = correlations.apply(
+                lambda ligne: tuple(
+                    sorted([
+                        ligne["Variable 1"],
+                        ligne["Variable 2"]
+                    ])
+                ),
+                axis=1
+            )
+
+            correlations = (
+                correlations
+                .drop_duplicates("paire")
+                .drop(columns="paire")
+            )
+
+            correlations["Corrélation absolue"] = (
+                correlations["Corrélation"].abs()
+            )
+
+            correlations = correlations.sort_values(
+                "Corrélation absolue",
+                ascending=False
+            )
+
+            # =================================================
+            # CLASSEMENT DES CORRÉLATIONS
+            # =================================================
+
+            st.subheader(
+                "🏆 Relations les plus fortes"
+            )
+
+            nb_relations = st.slider(
+                "Nombre de relations à afficher",
+                min_value=1,
+                max_value=min(
+                    30,
+                    len(correlations)
+                ),
+                value=min(
+                    10,
+                    len(correlations)
+                ),
+                key="nb_relations_correlation"
+            )
+
+            top_correlations = (
+                correlations
+                .head(nb_relations)
+                .copy()
+            )
+
+            top_correlations["Corrélation"] = (
+                top_correlations["Corrélation"]
+                .round(3)
+            )
+
+            top_correlations[
+                "Corrélation absolue"
+            ] = (
+                top_correlations[
+                    "Corrélation absolue"
+                ]
+                .round(3)
+            )
+
+            st.dataframe(
+                top_correlations[
+                    [
+                        "Variable 1",
+                        "Variable 2",
+                        "Corrélation"
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # =================================================
+            # INTERPRÉTATION DE LA PLUS FORTE RELATION
+            # =================================================
+
+            if not correlations.empty:
+
+                relation_max = correlations.iloc[0]
+
+                var1 = relation_max["Variable 1"]
+                var2 = relation_max["Variable 2"]
+                corr_max = relation_max["Corrélation"]
+
+                force = abs(corr_max)
+
+                if force < 0.2:
+                    niveau = "très faible"
+
+                elif force < 0.4:
+                    niveau = "faible"
+
+                elif force < 0.6:
+                    niveau = "modérée"
+
+                elif force < 0.8:
+                    niveau = "forte"
+
+                else:
+                    niveau = "très forte"
+
+                if corr_max > 0:
+                    direction = "positive"
+
+                elif corr_max < 0:
+                    direction = "négative"
+
+                else:
+                    direction = "nulle"
+
+                st.write(
+                    "### 🤖 Interprétation automatique"
+                )
+
+                st.write(
+                    f"""
+                    Parmi les variables sélectionnées, la relation
+                    la plus importante est observée entre
+                    **{var1}** et **{var2}**.
+
+                    Leur coefficient de corrélation est de
+                    **{corr_max:.3f}**.
+
+                    Cette relation peut être qualifiée de
+                    **{niveau} et {direction}**.
+                    """
+                )
+
+                # =============================================
+                # VISUALISATION AUTOMATIQUE
+                # =============================================
+
+                st.subheader(
+                    "🔎 Visualisation de cette relation"
+                )
+
+                fig_relation = px.scatter(
+                    df,
+                    x=var1,
+                    y=var2,
+                    opacity=0.6,
+                    title=(
+                        f"{var1} × {var2} "
+                        f"(corrélation = {corr_max:.3f})"
+                    )
+                )
+
+                st.plotly_chart(
+                    fig_relation,
+                    use_container_width=True
                 )
