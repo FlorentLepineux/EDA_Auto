@@ -759,9 +759,7 @@ with tab_univariee:
     # --------------------------------------------------------
 
     nb_valeurs = len(serie)
-
     nb_manquantes = serie.isna().sum()
-
     nb_uniques = serie.nunique(dropna=True)
 
     taux_manquant = (
@@ -770,101 +768,55 @@ with tab_univariee:
         else 0
     )
 
-
     col1, col2, col3, col4 = st.columns(4)
 
-
     with col1:
-
-        st.metric(
-            "Observations",
-            nb_valeurs
-        )
-
+        st.metric("Observations", nb_valeurs)
 
     with col2:
-
-        st.metric(
-            "Valeurs uniques",
-            nb_uniques
-        )
-
+        st.metric("Valeurs uniques", nb_uniques)
 
     with col3:
-
-        st.metric(
-            "Valeurs manquantes",
-            nb_manquantes
-        )
-
+        st.metric("Valeurs manquantes", nb_manquantes)
 
     with col4:
+        st.metric("Taux manquant", f"{taux_manquant:.2f} %")
 
-        st.metric(
-            "Taux manquant",
-            f"{taux_manquant:.2f} %"
-        )
+    # ========================================================
+    # ANALYSE NUMÉRIQUE
+    # ========================================================
 
-        st.subheader(
-            f"Analyse numérique : {variable}"
-        )
+    if est_numerique:
 
-
-        # ----------------------------------------------------
-        # SUPPRESSION TEMPORAIRE DES NaN
-        # ----------------------------------------------------
+        st.subheader(f"Analyse numérique : {variable}")
 
         serie_num = serie.dropna()
 
-
         if len(serie_num) == 0:
-
-            st.warning(
-                "Cette variable ne contient aucune valeur exploitable."
-            )
+            st.warning("Cette variable ne contient aucune valeur exploitable.")
 
         else:
-
-            # ------------------------------------------------
-            # STATISTIQUES DESCRIPTIVES
-            # ------------------------------------------------
-
+            # Statistiques descriptives
             moyenne = serie_num.mean()
             mediane = serie_num.median()
             minimum = serie_num.min()
             maximum = serie_num.max()
             ecart_type = serie_num.std()
-
             q1 = serie_num.quantile(0.25)
             q3 = serie_num.quantile(0.75)
 
-
             st.subheader("📐 Statistiques descriptives")
 
-
             statistiques = pd.DataFrame({
-
                 "Statistique": [
-                    "Moyenne",
-                    "Médiane",
-                    "Écart-type",
-                    "Minimum",
-                    "1er quartile",
-                    "3e quartile",
-                    "Maximum"
+                    "Moyenne", "Médiane", "Écart-type", "Minimum",
+                    "1er quartile", "3e quartile", "Maximum"
                 ],
-
                 "Valeur": [
-                    moyenne,
-                    mediane,
-                    ecart_type,
-                    minimum,
-                    q1,
-                    q3,
-                    maximum
+                    moyenne, mediane, ecart_type, minimum,
+                    q1, q3, maximum
                 ]
             })
-
 
             st.dataframe(
                 statistiques,
@@ -872,20 +824,16 @@ with tab_univariee:
                 hide_index=True
             )
 
-            # ------------------------------------------------
-            # HISTOGRAMME
-            # ------------------------------------------------
-
+            # Histogramme
             st.subheader("📊 Distribution")
-
 
             nb_classes = st.slider(
                 "Nombre de classes de l'histogramme",
                 min_value=5,
                 max_value=100,
-                value=30
+                value=30,
+                key="slider_histogramme"
             )
-
 
             fig_hist = px.histogram(
                 df,
@@ -894,71 +842,38 @@ with tab_univariee:
                 title=f"Distribution de {variable}"
             )
 
-
-            st.plotly_chart(
-                fig_hist,
-                use_container_width=True
-            )
+            st.plotly_chart(fig_hist, use_container_width=True)
 
             st.info(
                 """
                 💡 **Comment lire ce graphique ?**
 
-                Un histogramme représente la répartition
-                des valeurs d'une variable numérique.
-
-                Les barres les plus hautes correspondent
-                aux zones dans lesquelles les observations
+                Un histogramme représente la répartition des valeurs
+                d'une variable numérique. Les barres les plus hautes
+                correspondent aux zones dans lesquelles les observations
                 sont les plus nombreuses.
                 """
             )
 
+            # Interprétation de l'asymétrie
             asymetrie = serie_num.skew()
-
             st.write("### 🤖 Interprétation automatique")
 
-
             if abs(asymetrie) < 0.5:
-
-                st.write(
-                    """
-                    La distribution semble relativement
-                    **symétrique**.
-                    """
-                )
-
-
+                st.write("La distribution semble relativement **symétrique**.")
             elif asymetrie >= 0.5:
-
                 st.write(
-                    """
-                    La distribution présente une
-                    **asymétrie vers les valeurs élevées**.
-
-                    Quelques observations importantes peuvent
-                    tirer la moyenne vers le haut.
-                    """
+                    "La distribution présente une **asymétrie vers les valeurs élevées**. "
+                    "Quelques observations importantes peuvent tirer la moyenne vers le haut."
                 )
-
-
             else:
-
                 st.write(
-                    """
-                    La distribution présente une
-                    **asymétrie vers les valeurs faibles**.
-
-                    Quelques observations faibles peuvent
-                    tirer la moyenne vers le bas.
-                    """
+                    "La distribution présente une **asymétrie vers les valeurs faibles**. "
+                    "Quelques observations faibles peuvent tirer la moyenne vers le bas."
                 )
 
-            # ------------------------------------------------
-            # BOXPLOT
-            # ------------------------------------------------
-
+            # Boxplot
             st.subheader("📦 Boxplot")
-
 
             fig_box = px.box(
                 df,
@@ -967,161 +882,93 @@ with tab_univariee:
                 title=f"Boxplot de {variable}"
             )
 
-
-            st.plotly_chart(
-                fig_box,
-                use_container_width=True
-            )
+            st.plotly_chart(fig_box, use_container_width=True)
 
             st.info(
                 """
                 💡 **Comment lire un boxplot ?**
 
-                La boîte représente la partie centrale
-                de la distribution.
+                La boîte représente la partie centrale de la distribution.
+                Le trait situé dans la boîte correspond à la médiane.
+                Les points isolés peuvent correspondre à des valeurs atypiques.
 
-                Le trait situé dans la boîte correspond
-                à la médiane.
-
-                Les points isolés peuvent correspondre
-                à des valeurs atypiques.
-
-                Attention : une valeur atypique n'est pas
-                nécessairement une erreur.
+                Attention : une valeur atypique n'est pas nécessairement une erreur.
                 """
             )
 
-            # ------------------------------------------------
-            # DÉTECTION DES OUTLIERS PAR IQR
-            # ------------------------------------------------
-
+            # Détection des outliers par IQR
             iqr = q3 - q1
-
             borne_basse = q1 - 1.5 * iqr
             borne_haute = q3 + 1.5 * iqr
 
-
             outliers = serie_num[
-                (serie_num < borne_basse)
-                |
+                (serie_num < borne_basse) |
                 (serie_num > borne_haute)
             ]
 
-
             nb_outliers = len(outliers)
-
-
-            taux_outliers = (
-                nb_outliers
-                / len(serie_num)
-                * 100
-            )
-
+            taux_outliers = nb_outliers / len(serie_num) * 100
 
             st.write("### 🔎 Valeurs atypiques")
 
-
             col1, col2 = st.columns(2)
 
-
             with col1:
-
-                st.metric(
-                    "Valeurs atypiques",
-                    nb_outliers
-                )
-
+                st.metric("Valeurs atypiques", nb_outliers)
 
             with col2:
-
-                st.metric(
-                    "Part des observations",
-                    f"{taux_outliers:.2f} %"
-                )
+                st.metric("Part des observations", f"{taux_outliers:.2f} %")
 
             if nb_outliers > 0:
-
                 st.warning(
                     f"""
-                    La méthode IQR détecte **{nb_outliers}
-                    valeur(s) potentiellement atypique(s)**.
+                    La méthode IQR détecte **{nb_outliers} valeur(s) potentiellement atypique(s)**.
 
-                    Les valeurs situées en dessous de
-                    **{borne_basse:.2f}** ou au-dessus de
-                    **{borne_haute:.2f}** sont considérées
-                    comme atypiques selon cette méthode.
+                    Les valeurs situées en dessous de **{borne_basse:.2f}** ou au-dessus de
+                    **{borne_haute:.2f}** sont considérées comme atypiques selon cette méthode.
                     """
                 )
-
             else:
+                st.success("Aucune valeur atypique détectée avec la méthode IQR.")
 
-                st.success(
-                    """
-                    Aucune valeur atypique détectée
-                    avec la méthode IQR.
-                    """
-                )
-
-if est_numerique:
+    # ========================================================
+    # ANALYSE CATÉGORIELLE / TEXTUELLE
+    # ========================================================
 
     else:
 
-        st.subheader(
-            f"Analyse catégorielle : {variable}"
-        )
-
+        st.subheader(f"Analyse catégorielle : {variable}")
 
         serie_cat = serie.dropna()
 
-
         if len(serie_cat) == 0:
-
-            st.warning(
-                "Cette variable ne contient aucune valeur exploitable."
-            )
+            st.warning("Cette variable ne contient aucune valeur exploitable.")
 
         else:
-
-            # ------------------------------------------------
-            # VALEURS LES PLUS FRÉQUENTES
-            # ------------------------------------------------
-
             frequences = (
                 serie_cat
                 .value_counts()
                 .reset_index()
             )
-
-            frequences.columns = [
-                "Valeur",
-                "Effectif"
-            ]
-
-
+            frequences.columns = ["Valeur", "Effectif"]
             frequences["Pourcentage"] = (
-                frequences["Effectif"]
-                / len(serie_cat)
-                * 100
+                frequences["Effectif"] / len(serie_cat) * 100
             ).round(2)
 
-            st.subheader(
-                "🏆 Valeurs les plus fréquentes"
-            )
+            st.subheader("🏆 Valeurs les plus fréquentes")
 
+            max_modalites = min(50, len(frequences))
 
-            nb_modalites = st.slider(
-                "Nombre de modalités à afficher",
-                min_value=5,
-                max_value=min(
-                    50,
-                    len(frequences)
-                ),
-                value=min(
-                    10,
-                    len(frequences)
+            if max_modalites > 1:
+                nb_modalites = st.slider(
+                    "Nombre de modalités à afficher",
+                    min_value=1,
+                    max_value=max_modalites,
+                    value=min(10, max_modalites),
+                    key="slider_modalites"
                 )
-            )
-
+            else:
+                nb_modalites = 1
 
             st.dataframe(
                 frequences.head(nb_modalites),
@@ -1135,7 +982,6 @@ if est_numerique:
                 .sort_values("Effectif")
             )
 
-
             fig_cat = px.bar(
                 top_frequences,
                 x="Effectif",
@@ -1144,54 +990,31 @@ if est_numerique:
                 title=f"Valeurs les plus fréquentes — {variable}"
             )
 
-
-            st.plotly_chart(
-                fig_cat,
-                use_container_width=True
-            )
+            st.plotly_chart(fig_cat, use_container_width=True)
 
             valeur_principale = frequences.iloc[0]["Valeur"]
-
             effectif_principal = frequences.iloc[0]["Effectif"]
-
             pourcentage_principal = frequences.iloc[0]["Pourcentage"]
 
-            st.write(
-                "### 🤖 Interprétation automatique"
-            )
-
-
+            st.write("### 🤖 Interprétation automatique")
             st.write(
                 f"""
-                La modalité la plus fréquente est
-                **{valeur_principale}**.
+                La modalité la plus fréquente est **{valeur_principale}**.
 
-                Elle apparaît **{effectif_principal} fois**
-                et représente environ
-                **{pourcentage_principal:.2f} %**
-                des observations renseignées.
+                Elle apparaît **{effectif_principal} fois** et représente environ
+                **{pourcentage_principal:.2f} %** des observations renseignées.
                 """
             )
 
-            taux_unique = (
-                serie_cat.nunique()
-                / len(serie_cat)
-                * 100
-            )
-
+            taux_unique = serie_cat.nunique() / len(serie_cat) * 100
 
             if taux_unique >= 95:
-
                 st.warning(
                     """
-                    ⚠️ Cette variable possède presque
-                    uniquement des valeurs différentes.
+                    ⚠️ Cette variable possède presque uniquement des valeurs différentes.
 
-                    Elle pourrait correspondre à un
-                    **identifiant**, un numéro de référence
-                    ou un champ texte libre.
-
-                    Une analyse de fréquence est alors
-                    généralement peu pertinente.
+                    Elle pourrait correspondre à un **identifiant**, un numéro de référence
+                    ou un champ texte libre. Une analyse de fréquence est alors généralement
+                    peu pertinente.
                     """
                 )
