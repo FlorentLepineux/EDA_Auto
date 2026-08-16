@@ -740,7 +740,10 @@ with tab_univariee:
     # DÉTECTION DU TYPE
     # --------------------------------------------------------
 
-    est_numerique = pd.api.types.is_numeric_dtype(serie)
+    est_numerique = (
+    pd.api.types.is_numeric_dtype(serie)
+    and not pd.api.types.is_bool_dtype(serie)
+)
 
     if est_numerique:
 
@@ -790,7 +793,10 @@ with tab_univariee:
 
         st.subheader(f"Analyse numérique : {variable}")
 
-        serie_num = serie.dropna()
+        serie_num = pd.to_numeric(
+            serie.dropna(),
+            errors="coerce"
+        ).dropna()
 
         if len(serie_num) == 0:
             st.warning("Cette variable ne contient aucune valeur exploitable.")
