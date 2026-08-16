@@ -160,10 +160,11 @@ st.caption(
 # CRÉATION DES ONGLETS
 # ============================================================
 
-tab_general, tab_qualite, tab_univariee = st.tabs([
+tab_general, tab_qualite, tab_univariee, tab_bivariee = st.tabs([
     "📋 Vue générale",
     "🧹 Qualité des données",
-    "📊 Analyse univariée"
+    "📊 Analyse univariée",
+    "🔗 Analyse bivariée"
 ])
 
 
@@ -1022,5 +1023,390 @@ with tab_univariee:
                     Elle pourrait correspondre à un **identifiant**, un numéro de référence
                     ou un champ texte libre. Une analyse de fréquence est alors généralement
                     peu pertinente.
+                    """
+                )
+# ============================================================
+# ONGLET 4 : ANALYSE BIVARIÉE
+# ============================================================
+
+with tab_bivariee:
+
+    st.header("🔗 Analyse bivariée")
+
+    st.write(
+        """
+        L'analyse bivariée consiste à étudier la relation
+        entre **deux variables**.
+
+        Le type d'analyse dépend de la nature des variables :
+
+        - numérique + numérique → nuage de points et corrélation ;
+        - numérique + catégorielle → comparaison des distributions ;
+        - catégorielle + catégorielle → tableau croisé.
+        """
+    )
+
+    # --------------------------------------------------------
+    # SÉLECTION DES VARIABLES
+    # --------------------------------------------------------
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        variable_x = st.selectbox(
+            "Variable X",
+            options=df.columns,
+            key="bivariee_x"
+        )
+
+    with col2:
+        variable_y = st.selectbox(
+            "Variable Y",
+            options=df.columns,
+            index=min(1, len(df.columns) - 1),
+            key="bivariee_y"
+        )
+
+    if variable_x == variable_y:
+
+        st.warning(
+            "⚠️ Sélectionnez deux variables différentes."
+        )
+
+    else:
+
+        serie_x = df[variable_x]
+        serie_y = df[variable_y]
+
+        # Les booléens sont considérés comme catégoriels
+        x_numerique = (
+            pd.api.types.is_numeric_dtype(serie_x)
+            and not pd.api.types.is_bool_dtype(serie_x)
+        )
+
+        y_numerique = (
+            pd.api.types.is_numeric_dtype(serie_y)
+            and not pd.api.types.is_bool_dtype(serie_y)
+        )
+
+
+        # ====================================================
+        # CAS 1 : NUMÉRIQUE + NUMÉRIQUE
+        # ====================================================
+
+        if x_numerique and y_numerique:
+
+            st.subheader("🔢 Numérique × Numérique")
+
+            donnees_bivariees = (
+                df[[variable_x, variable_y]]
+                .dropna()
+                .copy()
+            )
+
+            if len(donnees_bivariees) < 2:
+
+                st.warning(
+                    "Pas assez de données pour analyser cette relation."
+                )
+
+            else:
+
+                # --------------------------------------------
+                # CORRÉLATION DE PEARSON
+                # --------------------------------------------
+
+                correlation = (
+                    donnees_bivariees[variable_x]
+                    .corr(donnees_bivariees[variable_y])
+                )
+
+                st.metric(
+                    "Corrélation de Pearson",
+                    f"{correlation:.3f}"
+                )
+
+                # --------------------------------------------
+                # SCATTER PLOT
+                # --------------------------------------------
+
+                fig_scatter = px.scatter(
+                    donnees_bivariees,
+                    x=variable_x,
+                    y=variable_y,
+                    title=f"{variable_x} × {variable_y}",
+                    opacity=0.7
+                )
+
+                st.plotly_chart(
+                    fig_scatter,
+                    use_container_width=True
+                )
+
+                # --------------------------------------------
+                # INTERPRÉTATION
+                # --------------------------------------------
+
+                st.write("### 🤖 Interprétation automatique")
+
+                if pd.isna(correlation):
+
+                    st.info(
+                        """
+                        La corrélation ne peut pas être calculée.
+                        Cela peut notamment arriver lorsqu'une
+                        variable est constante.
+                        """
+                    )
+
+                else:
+
+                    force = abs(correlation)
+
+                    if force < 0.2:
+                        interpretation = "très faible"
+
+                    elif force < 0.4:
+                        interpretation = "faible"
+
+                    elif force < 0.6:
+                        interpretation = "modérée"
+
+                    elif force < 0.8:
+                        interpretation = "forte"
+
+                    else:
+                        interpretation = "très forte"
+
+                    if correlation > 0:
+                        direction = "positive"
+                    elif correlation < 0:
+                        direction = "négative"
+                    else:
+                        direction = "nulle"
+
+                    st.write(
+                        f"""
+                        La relation linéaire entre **{variable_x}**
+                        et **{variable_y}** est **{interpretation}**
+                        et **{direction}**.
+
+                        Coefficient de Pearson : **{correlation:.3f}**.
+                        """
+                    )
+
+                    st.info(
+                        """
+                        💡 Une corrélation ne démontre pas une causalité.
+
+                        Deux variables peuvent évoluer ensemble sans
+                        que l'une soit directement responsable de l'autre.
+                        """
+                    )
+
+
+        # ====================================================
+        # CAS 2 : NUMÉRIQUE + CATÉGORIELLE
+        # ====================================================
+
+        elif x_numerique != y_numerique:
+
+            st.subheader("📦 Numérique × Catégorielle")
+
+            if x_numerique:
+                variable_num = variable_x
+                variable_cat = variable_y
+            else:
+                variable_num = variable_y
+                variable_cat = variable_x
+
+            donnees_bivariees = (
+                df[[variable_num, variable_cat]]
+                .dropna()
+                .copy()
+            )
+
+            nb_categories = (
+                donnees_bivariees[variable_cat]
+                .nunique()
+            )
+
+            st.write(
+                f"""
+                **Variable numérique :** {variable_num}
+
+                **Variable catégorielle :** {variable_cat}
+
+                **Nombre de catégories :** {nb_categories}
+                """
+            )
+
+            # --------------------------------------------
+            # TROP DE CATÉGORIES
+            # --------------------------------------------
+
+            if nb_categories > 30:
+
+                st.warning(
+                    """
+                    ⚠️ Cette variable possède plus de 30 catégories.
+
+                    Un boxplot contenant autant de groupes serait
+                    difficile à lire.
+
+                    Sélectionnez de préférence une variable
+                    catégorielle comportant moins de modalités.
+                    """
+                )
+
+            else:
+
+                # --------------------------------------------
+                # BOXPLOT
+                # --------------------------------------------
+
+                fig_box_biv = px.box(
+                    donnees_bivariees,
+                    x=variable_cat,
+                    y=variable_num,
+                    points="outliers",
+                    title=(
+                        f"Distribution de {variable_num} "
+                        f"selon {variable_cat}"
+                    )
+                )
+
+                st.plotly_chart(
+                    fig_box_biv,
+                    use_container_width=True
+                )
+
+                # --------------------------------------------
+                # STATISTIQUES PAR GROUPE
+                # --------------------------------------------
+
+                stats_groupes = (
+                    donnees_bivariees
+                    .groupby(variable_cat)[variable_num]
+                    .agg([
+                        "count",
+                        "mean",
+                        "median",
+                        "std",
+                        "min",
+                        "max"
+                    ])
+                    .reset_index()
+                )
+
+                stats_groupes.columns = [
+                    variable_cat,
+                    "Effectif",
+                    "Moyenne",
+                    "Médiane",
+                    "Écart-type",
+                    "Minimum",
+                    "Maximum"
+                ]
+
+                st.subheader(
+                    "📐 Statistiques par catégorie"
+                )
+
+                st.dataframe(
+                    stats_groupes,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                st.info(
+                    """
+                    💡 Le boxplot permet de comparer la distribution
+                    d'une variable numérique entre plusieurs groupes.
+
+                    Des différences de médiane ou de dispersion peuvent
+                    révéler des comportements différents selon les catégories.
+                    """
+                )
+
+
+        # ====================================================
+        # CAS 3 : CATÉGORIELLE + CATÉGORIELLE
+        # ====================================================
+
+        else:
+
+            st.subheader("🔤 Catégorielle × Catégorielle")
+
+            donnees_bivariees = (
+                df[[variable_x, variable_y]]
+                .dropna()
+                .copy()
+            )
+
+            nb_x = donnees_bivariees[variable_x].nunique()
+            nb_y = donnees_bivariees[variable_y].nunique()
+
+            if nb_x > 30 or nb_y > 30:
+
+                st.warning(
+                    """
+                    ⚠️ Au moins une des deux variables possède
+                    plus de 30 modalités.
+
+                    Le tableau croisé risquerait d'être très volumineux.
+                    Essayez des variables avec moins de catégories.
+                    """
+                )
+
+            else:
+
+                # --------------------------------------------
+                # TABLEAU CROISÉ
+                # --------------------------------------------
+
+                tableau_croise = pd.crosstab(
+                    donnees_bivariees[variable_x],
+                    donnees_bivariees[variable_y]
+                )
+
+                st.subheader("🧮 Tableau croisé")
+
+                st.dataframe(
+                    tableau_croise,
+                    use_container_width=True
+                )
+
+                # --------------------------------------------
+                # POURCENTAGES
+                # --------------------------------------------
+
+                tableau_pourcentage = pd.crosstab(
+                    donnees_bivariees[variable_x],
+                    donnees_bivariees[variable_y],
+                    normalize="index"
+                ) * 100
+
+                tableau_pourcentage = (
+                    tableau_pourcentage.round(2)
+                )
+
+                st.subheader(
+                    "📊 Répartition en pourcentage"
+                )
+
+                st.dataframe(
+                    tableau_pourcentage,
+                    use_container_width=True
+                )
+
+                st.info(
+                    """
+                    💡 Le tableau croisé permet d'observer comment
+                    les modalités de deux variables catégorielles
+                    se répartissent les unes par rapport aux autres.
+
+                    Les pourcentages facilitent la comparaison lorsque
+                    les groupes n'ont pas les mêmes effectifs.
                     """
                 )
