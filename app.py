@@ -2,6 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.ensemble import IsolationForest
 
 
 # ============================================================
@@ -160,12 +166,13 @@ st.caption(
 # CRÉATION DES ONGLETS
 # ============================================================
 
-tab_general, tab_qualite, tab_univariee, tab_bivariee, tab_correlations = st.tabs([
+tab_general, tab_qualite, tab_univariee, tab_bivariee, tab_correlations, tab_avancee = st.tabs([
     "📋 Vue générale",
     "🧹 Qualité des données",
     "📊 Analyse univariée",
     "🔗 Analyse bivariée",
-    "🔥 Corrélations"
+    "🔥 Corrélations",
+    "🧠 Analyse avancée"
 ])
 
 
@@ -1764,5 +1771,479 @@ with tab_correlations:
 
                 st.plotly_chart(
                     fig_relation,
+                    use_container_width=True
+                )
+# ============================================================
+# ONGLET 6 : ANALYSE AVANCÉE
+# ============================================================
+
+with tab_avancee:
+
+    st.header("🧠 Analyse avancée")
+
+    st.write(
+        """
+        Cette partie présente quelques méthodes de Machine Learning
+        non supervisé.
+
+        Elles permettent d'explorer les données sans disposer
+        d'une variable cible à prédire.
+
+        Trois techniques sont proposées :
+
+        - **PCA / ACP** : réduire le nombre de dimensions ;
+        - **K-Means** : rechercher automatiquement des groupes ;
+        - **Isolation Forest** : détecter des observations atypiques.
+        """
+    )
+
+    # --------------------------------------------------------
+    # COLONNES NUMÉRIQUES DISPONIBLES
+    # --------------------------------------------------------
+
+    colonnes_num_avance = [
+        col for col in df.columns
+        if (
+            pd.api.types.is_numeric_dtype(df[col])
+            and not pd.api.types.is_bool_dtype(df[col])
+        )
+    ]
+
+    if len(colonnes_num_avance) < 2:
+
+        st.warning(
+            """
+            Au moins deux variables numériques sont nécessaires
+            pour réaliser une analyse avancée.
+            """
+        )
+
+    else:
+
+        variables_ml = st.multiselect(
+            "Variables numériques à utiliser",
+            options=colonnes_num_avance,
+            default=colonnes_num_avance[:min(5, len(colonnes_num_avance))],
+            key="variables_ml"
+        )
+
+        if len(variables_ml) < 2:
+
+            st.warning(
+                "Sélectionnez au moins deux variables numériques."
+            )
+
+        else:
+
+            # =================================================
+            # PRÉPARATION COMMUNE DES DONNÉES
+            # =================================================
+
+            X_ml = df[variables_ml].copy()
+
+            # Imputation des valeurs manquantes par la médiane
+            imputer = SimpleImputer(
+                strategy="median"
+            )
+
+            X_impute = imputer.fit_transform(X_ml)
+
+            # Standardisation
+            scaler = StandardScaler()
+
+            X_scaled = scaler.fit_transform(
+                X_impute
+            )
+
+            st.success(
+                f"""
+                {len(variables_ml)} variables utilisées sur
+                {len(df)} observations.
+
+                Les valeurs manquantes sont remplacées par la médiane,
+                puis les variables sont standardisées.
+                """
+            )
+
+            st.divider()
+
+            # =================================================
+            # PCA / ACP
+            # =================================================
+
+            st.subheader("1️⃣ PCA / ACP")
+
+            st.write(
+                """
+                L'Analyse en Composantes Principales permet de réduire
+                un jeu de données comportant plusieurs variables en
+                quelques nouvelles dimensions appelées
+                **composantes principales**.
+
+                L'objectif est de conserver autant d'information
+                que possible avec moins de dimensions.
+                """
+            )
+
+            pca = PCA(
+                n_components=2
+            )
+
+            X_pca = pca.fit_transform(
+                X_scaled
+            )
+
+            variance_pc1 = (
+                pca.explained_variance_ratio_[0]
+                * 100
+            )
+
+            variance_pc2 = (
+                pca.explained_variance_ratio_[1]
+                * 100
+            )
+
+            variance_totale = (
+                variance_pc1
+                + variance_pc2
+            )
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+
+                st.metric(
+                    "Variance expliquée PC1",
+                    f"{variance_pc1:.2f} %"
+                )
+
+            with col2:
+
+                st.metric(
+                    "Variance expliquée PC2",
+                    f"{variance_pc2:.2f} %"
+                )
+
+            with col3:
+
+                st.metric(
+                    "Variance totale conservée",
+                    f"{variance_totale:.2f} %"
+                )
+
+            df_pca = pd.DataFrame({
+                "Composante 1": X_pca[:, 0],
+                "Composante 2": X_pca[:, 1]
+            })
+
+            fig_pca = px.scatter(
+                df_pca,
+                x="Composante 1",
+                y="Composante 2",
+                title="Projection PCA en deux dimensions",
+                opacity=0.7
+            )
+
+            st.plotly_chart(
+                fig_pca,
+                use_container_width=True
+            )
+
+            st.info(
+                """
+                💡 Chaque point correspond à une ligne du fichier.
+
+                Des points proches dans ce graphique possèdent
+                généralement des caractéristiques numériques similaires.
+
+                La PCA ne crée pas des groupes : elle permet surtout
+                de simplifier et visualiser un jeu de données complexe.
+                """
+            )
+
+            st.divider()
+
+            # =================================================
+            # K-MEANS
+            # =================================================
+
+            st.subheader("2️⃣ K-Means")
+
+            st.write(
+                """
+                K-Means cherche automatiquement des groupes
+                d'observations ayant des caractéristiques similaires.
+
+                Le nombre de groupes, appelé **K**, doit être choisi
+                avant l'entraînement du modèle.
+                """
+            )
+
+            max_k = min(
+                10,
+                len(df) - 1
+            )
+
+            if max_k < 2:
+
+                st.warning(
+                    "Pas assez d'observations pour lancer K-Means."
+                )
+
+            else:
+
+                k = st.slider(
+                    "Nombre de clusters K",
+                    min_value=2,
+                    max_value=max_k,
+                    value=min(3, max_k),
+                    key="kmeans_k"
+                )
+
+                kmeans = KMeans(
+                    n_clusters=k,
+                    random_state=42,
+                    n_init=10
+                )
+
+                clusters = kmeans.fit_predict(
+                    X_scaled
+                )
+
+                score_silhouette = silhouette_score(
+                    X_scaled,
+                    clusters
+                )
+
+                st.metric(
+                    "Score de silhouette",
+                    f"{score_silhouette:.3f}"
+                )
+
+                st.info(
+                    """
+                    💡 Le score de silhouette est compris
+                    approximativement entre -1 et 1.
+
+                    Plus il est élevé, plus les groupes sont
+                    bien séparés.
+                    """
+                )
+
+                # ---------------------------------------------
+                # VISUALISATION SUR LA PCA
+                # ---------------------------------------------
+
+                df_clusters = pd.DataFrame({
+                    "Composante 1": X_pca[:, 0],
+                    "Composante 2": X_pca[:, 1],
+                    "Cluster": clusters.astype(str)
+                })
+
+                fig_clusters = px.scatter(
+                    df_clusters,
+                    x="Composante 1",
+                    y="Composante 2",
+                    color="Cluster",
+                    title=f"K-Means — {k} clusters",
+                    opacity=0.7
+                )
+
+                st.plotly_chart(
+                    fig_clusters,
+                    use_container_width=True
+                )
+
+                # ---------------------------------------------
+                # TAILLE DES GROUPES
+                # ---------------------------------------------
+
+                effectifs_clusters = (
+                    pd.Series(clusters)
+                    .value_counts()
+                    .sort_index()
+                    .rename_axis("Cluster")
+                    .reset_index(name="Nombre d'observations")
+                )
+
+                st.subheader(
+                    "Répartition des clusters"
+                )
+
+                st.dataframe(
+                    effectifs_clusters,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                # ---------------------------------------------
+                # PROFIL DES CLUSTERS
+                # ---------------------------------------------
+
+                df_profils = df[variables_ml].copy()
+
+                df_profils["Cluster"] = clusters
+
+                profils_clusters = (
+                    df_profils
+                    .groupby("Cluster")
+                    [variables_ml]
+                    .mean()
+                    .round(2)
+                )
+
+                st.subheader(
+                    "🧬 Profil moyen des clusters"
+                )
+
+                st.dataframe(
+                    profils_clusters,
+                    use_container_width=True
+                )
+
+                st.write(
+                    """
+                    Ce tableau permet de comprendre quelles
+                    caractéristiques distinguent les différents groupes.
+
+                    Par exemple, un cluster peut présenter des montants
+                    moyens plus élevés ou des durées plus importantes.
+                    """
+                )
+
+            st.divider()
+
+            # =================================================
+            # ISOLATION FOREST
+            # =================================================
+
+            st.subheader("3️⃣ Isolation Forest")
+
+            st.write(
+                """
+                Isolation Forest recherche les observations
+                qui se distinguent fortement du reste du jeu de données.
+
+                Ces observations sont appelées **anomalies** ou
+                **outliers multivariés**.
+                """
+            )
+
+            contamination = st.slider(
+                "Proportion estimée d'anomalies (%)",
+                min_value=1,
+                max_value=20,
+                value=5,
+                step=1,
+                key="contamination_iso"
+            )
+
+            modele_iso = IsolationForest(
+                contamination=(
+                    contamination / 100
+                ),
+                random_state=42
+            )
+
+            predictions_iso = (
+                modele_iso
+                .fit_predict(X_scaled)
+            )
+
+            scores_iso = (
+                modele_iso
+                .decision_function(X_scaled)
+            )
+
+            anomalies = (
+                predictions_iso == -1
+            )
+
+            nb_anomalies = (
+                anomalies.sum()
+            )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                st.metric(
+                    "Anomalies détectées",
+                    nb_anomalies
+                )
+
+            with col2:
+
+                st.metric(
+                    "Part des observations",
+                    f"{nb_anomalies / len(df) * 100:.2f} %"
+                )
+
+            # -------------------------------------------------
+            # VISUALISATION DES ANOMALIES
+            # -------------------------------------------------
+
+            df_iso = pd.DataFrame({
+                "Composante 1": X_pca[:, 0],
+                "Composante 2": X_pca[:, 1],
+                "Statut": np.where(
+                    anomalies,
+                    "Anomalie",
+                    "Normal"
+                ),
+                "Score anomalie": scores_iso
+            })
+
+            fig_iso = px.scatter(
+                df_iso,
+                x="Composante 1",
+                y="Composante 2",
+                color="Statut",
+                hover_data=["Score anomalie"],
+                title="Détection d'anomalies — Isolation Forest",
+                opacity=0.7
+            )
+
+            st.plotly_chart(
+                fig_iso,
+                use_container_width=True
+            )
+
+            st.warning(
+                """
+                ⚠️ Une anomalie détectée automatiquement
+                n'est pas nécessairement une erreur.
+
+                Cela signifie uniquement que l'observation présente
+                un comportement inhabituel par rapport aux autres.
+
+                Une vérification humaine reste nécessaire.
+                """
+            )
+
+            if nb_anomalies > 0:
+
+                st.subheader(
+                    "🔎 Observations détectées comme atypiques"
+                )
+
+                df_anomalies = (
+                    df.loc[anomalies]
+                    .copy()
+                )
+
+                df_anomalies[
+                    "Score_anomalie"
+                ] = scores_iso[anomalies]
+
+                df_anomalies = (
+                    df_anomalies
+                    .sort_values(
+                        "Score_anomalie"
+                    )
+                )
+
+                st.dataframe(
+                    df_anomalies.head(100),
                     use_container_width=True
                 )
